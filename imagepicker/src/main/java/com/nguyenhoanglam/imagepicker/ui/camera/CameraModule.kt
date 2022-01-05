@@ -26,6 +26,9 @@ import java.io.IOException
 import java.io.Serializable
 import java.text.SimpleDateFormat
 import java.util.*
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
+
 
 class CameraModule : Serializable {
 
@@ -145,9 +148,19 @@ class CameraModule : Serializable {
                     context,
                     arrayOf(currentFilePath),
                     null
-                ) { _, _ ->
+                ) { path, uri ->
+
+                    val bitmap = getBitmapFromUri(contentResolver, uri)
+
+                    val rotatedBitmap = rotateBitmap(bitmap, path)
+
+                    contentResolver.run {
+                        val imageOutputStream = openOutputStream(uri!!)
+                        rotatedBitmap?.compress(Bitmap.CompressFormat.JPEG, 100, imageOutputStream)
+                    }
+
                     val images = arrayListOf(
-                        Image(currentFileUri!!, currentFileName!!, 0, config.subDirectory!!)
+                        Image(uri!!, currentFileName!!, 0, config.subDirectory!!)
                     )
                     imageReadyListener.onImageReady(images)
                     reset(context)
@@ -204,5 +217,29 @@ class CameraModule : Serializable {
         return bitmap
     }
 
+    private fun exifToDegrees(path: String): Float {
+        val rotation: Int = ExifInterface(path).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+        return when (rotation) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> {
+                90f
+            }
+            ExifInterface.ORIENTATION_ROTATE_180 -> {
+                180f
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> {
+                270f
+            }
+            else -> 0f
+        }
+    }
+
+    private fun rotateBitmap(source: Bitmap, path: String): Bitmap? {
+        val matrix = Matrix()
+        matrix.postRotate(exifToDegrees(path))
+        return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
+    }
 
 }
